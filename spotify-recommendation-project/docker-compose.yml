@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  spotify-recommendation-redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - recommendation_network
+
+  spotify-recommendation-backend:
+    build: ./backend
+    command: node index.js
+    depends_on:
+      - spotify-recommendation-redis
+      - spotify-recommendation-postgres
+    ports:
+      - "3001:3001"
+    networks:
+      - recommendation_network
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+
+  spotify-recommendation-frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    networks:
+      - recommendation_network
+
+  spotify-recommendation-recommendation:
+    build: ./recommendation
+    command: sh -c "sleep 30 && python recommendation.py"
+    networks:
+      - recommendation_network
+
+  spotify-recommendation-postgres:
+    image: postgres:alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: spotify_db
+    ports:
+      - "5432:5432"
+    networks:
+      - recommendation_network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    sysctls:
+      - net.core.somaxconn=1024  # Configura la capacidad de conexión de PostgreSQL
+
+networks:
+  recommendation_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

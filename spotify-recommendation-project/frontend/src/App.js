@@ -7,8 +7,8 @@ function App() {
   const [recommendations, setRecommendations] = useState([]);
 
   const availableGenres = [
-    'rock', 'pop', 'jazz', 'hip-hop', 'electronic', 'classical'
-  ]; // Ejemplo de géneros disponibles
+    'rock', 'pop', 'jazz', 'hip-hop', 'electronic', 'classical',
+  ]; // Lista de géneros disponibles
 
   const handleGenreChange = (e) => {
     const { value, checked } = e.target;
@@ -21,9 +21,10 @@ function App() {
 
   const fetchRecommendations = async () => {
     try {
-      const response = await axios.post('http://localhost:3001/generate-recommendations', {
-        genres,
-      });
+      const response = await axios.post(
+        'https://probable-spork-757797rxvw52x446-3001.app.github.dev/generate-recommendations',
+        { genres }
+      );
       setRecommendations(response.data);
     } catch (error) {
       console.error('Error fetching recommendations:', error);
@@ -56,7 +57,11 @@ function App() {
             <ul>
               {recommendations.map((rec, index) => (
                 <li key={index}>
-                  <img src={rec.album_cover} alt={rec.album_name} style={{ width: '100px', height: '100px' }} />
+                  <img
+                    src={rec.album_cover}
+                    alt={rec.album_name}
+                    style={{ width: '100px', height: '100px' }}
+                  />
                   <div>
                     <h3>{rec.album_name}</h3>
                     <p>{rec.artist_name}</p>

@@ -1,20 +1,26 @@
 import express from 'express';
 import axios from 'axios';
-import pkg from 'pg';
-const { Client } = pkg;
+import { Client } from 'pg';  // Cambié la importación para usar la forma estándar
 import dotenv from 'dotenv';
 import cors from 'cors';
 
 dotenv.config();
 
 const app = express();
-const port = 3001; // Puedes cambiarlo si quieres evitar posibles conflictos
+const port = 3001;
 
-// Configurar CORS
+// Configuración de CORS
 app.use(cors({
-  origin: 'http://localhost:3000', // Asegúrate de que tu frontend esté corriendo en el puerto 3000
+  origin: 'https://probable-spork-757797rxvw52x446-3000.app.github.dev',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,  // Para permitir el paso de cookies si es necesario
 }));
-app.use(express.json()); // Middleware para parsear JSON
+
+app.use(express.json());
+
+// Middleware para solicitudes preflight
+app.options('*', cors());
 
 // Conexión a PostgreSQL
 const pgClient = new Client({
@@ -29,34 +35,23 @@ pgClient.connect()
   .then(() => console.log('Connected to PostgreSQL'))
   .catch((err) => {
     console.error('Failed to connect to PostgreSQL', err);
-    process.exit(1); // Si falla la conexión a la BD, detener el servidor
+    process.exit(1); // Si falla la conexión, detener el servidor
   });
 
-// Endpoint de prueba para verificar si el servidor funciona
-app.get('/test', (req, res) => {
-  res.status(200).send('Server is running properly');
-});
-
-// Endpoint para generar recomendaciones basadas en géneros
+// Endpoint para generar recomendaciones
 app.post('/generate-recommendations', async (req, res) => {
   try {
     const { genres } = req.body;
-    console.log("Received genres:", genres);
 
+    // Validación de la entrada
     if (!genres || !Array.isArray(genres) || genres.length === 0) {
-      return res.status(400).json({ error: 'Invalid genres data. Please provide a valid list of genres.' });
-    }
-
-    if (!process.env.API_KEY_THEAUDIO) {
-      console.error('API_KEY_THEAUDIO is not defined in environment variables.');
-      return res.status(500).json({ error: 'Server configuration error. Please contact support.' });
+      return res.status(400).json({ error: 'Invalid genres data. Provide a valid list of genres.' });
     }
 
     const recommendations = [];
 
+    // Obtener recomendaciones para cada género
     for (let genre of genres) {
-      console.log(`Fetching recommendations for genre: ${genre}`);
-
       const options = {
         method: 'GET',
         url: `https://www.theaudiodb.com/api/v1/json/${process.env.API_KEY_THEAUDIO}/searchalbum.php?s=${genre}`,
@@ -64,11 +59,8 @@ app.post('/generate-recommendations', async (req, res) => {
 
       try {
         const response = await axios.request(options);
-
-        // Verificar si la respuesta tiene álbumes
-        if (response.data && response.data.album && response.data.album.length > 0) {
-          const albums = response.data.album;
-          albums.forEach(album => {
+        if (response.data && response.data.album) {
+          response.data.album.forEach((album) => {
             recommendations.push({
               genre,
               album_name: album.strAlbum,
@@ -77,38 +69,41 @@ app.post('/generate-recommendations', async (req, res) => {
               album_cover: album.strAlbumThumb,
             });
           });
-        } else {
-          console.warn(`No albums found for genre: ${genre}`);
         }
       } catch (error) {
-        console.error(`Error fetching data for genre ${genre}:`, error.response ? error.response.data : error.message);
-        return res.status(500).json({ error: `Error fetching data for genre ${genre}` });
+        console.error(`Error fetching data for genre ${genre}:`, error.message);
       }
     }
 
-    // Verificar si se encontraron recomendaciones
+    // Si no hay recomendaciones, se devuelve un mensaje
     if (recommendations.length === 0) {
-      return res.status(404).json({ message: "No recommendations found for the selected genres." });
+      return res.status(404).json({ error: 'No recommendations found for the selected genres.' });
     }
 
-    // Guardar las recomendaciones en PostgreSQL
+    // Insertar las recomendaciones en la base de datos
     for (let rec of recommendations) {
       const { genre, album_name, artist_name, release_year, album_cover } = rec;
 
       try {
-        await pgClient.query(
-          'INSERT INTO recommendations (genre, album_name, artist_name, release_year, album_cover) VALUES ($1, $2, $3, $4, $5)',
-          [genre, album_name, artist_name, release_year, album_cover]
+        // Verificar si la recomendación ya existe antes de insertar
+        const existingRecommendation = await pgClient.query(
+          'SELECT * FROM recommendations WHERE album_name = $1 AND artist_name = $2',
+          [album_name, artist_name]
         );
-        console.log(`Inserted recommendation into PostgreSQL: ${album_name} by ${artist_name}`);
+
+        if (existingRecommendation.rows.length === 0) {
+          await pgClient.query(
+            'INSERT INTO recommendations (genre, album_name, artist_name, release_year, album_cover) VALUES ($1, $2, $3, $4, $5)',
+            [genre, album_name, artist_name, release_year, album_cover]
+          );
+        }
       } catch (error) {
         console.error('Error inserting into PostgreSQL:', error);
       }
     }
 
-    // Devolver las recomendaciones al frontend
+    // Devolver las recomendaciones
     res.status(200).json(recommendations);
-
   } catch (error) {
     console.error('Error generating recommendations:', error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -117,5 +112,5 @@ app.post('/generate-recommendations', async (req, res) => {
 
 // Iniciar el servidor
 app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+  console.log(`Backend is running on https://probable-spork-757797rxvw52x446-3001.app.github.dev`);
 });
